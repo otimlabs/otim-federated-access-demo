@@ -1,9 +1,9 @@
 import axios, { AxiosResponse } from 'axios';
 import * as dotenv from 'dotenv';
-import { hashTypedData, keccak256, toHex, pad, hashAuthorization, recoverPublicKey, hashMessage } from 'viem/utils';
+import { hashTypedData, keccak256, toHex, pad, hashAuthorization, getAddress } from 'viem/utils';
 import { signMessage } from 'viem/accounts';
 import { stringToBase64urlString } from '@turnkey/encoding';
-import { compressRawPublicKey, toDerSignature } from '@turnkey/crypto';
+import { toDerSignature } from '@turnkey/crypto';
 
 // Load environment variables
 dotenv.config();
@@ -38,27 +38,14 @@ class TurnkeyDirectClient {
     console.log('✍️ Viem EIP-191 SECP256K1 Signature:');
     console.log('Original signature (hex):', signature);
     
-    // Recover public key from signature (like Turnkey WalletStamper does)
-    const secp256k1PublicKey = await recoverPublicKey({
-      hash: hashMessage(payload),
-      signature: signature as `0x${string}`,
-    });
-    
-    // Compress the public key
-    const publicKeyHex = secp256k1PublicKey.replace("0x", "");
-    const publicKeyBytes = Uint8Array.from(Buffer.from(publicKeyHex, "hex"));
-    const compressedPublicKey = Buffer.from(compressRawPublicKey(publicKeyBytes)).toString("hex");
-    
     // Convert signature to DER format using Turnkey's utility
     const derSignature = toDerSignature(signature.replace("0x", ""));
     
-    console.log('Recovered public key (hex):', publicKeyHex);
-    console.log('Compressed public key (hex):', compressedPublicKey);
     console.log('DER signature (hex):', derSignature);
     
-    // Create stamp with EIP-191 scheme (like Turnkey WalletStamper)
+    // Create stamp with EIP-191 scheme using the public key from env vars
     const stamp = {
-      publicKey: compressedPublicKey,
+      publicKey: this.apiPublicKey,
       scheme: "SIGNATURE_SCHEME_TK_API_SECP256K1_EIP191",
       signature: derSignature,
     };
@@ -73,12 +60,18 @@ class TurnkeyDirectClient {
   }
 
   async signRawPayloads(organizationId: string, payloads: string[], signWith: string): Promise<string[]> {
+    // Convert address to EIP-55 checksummed format (Turnkey requires this)
+    const checksummedAddress = getAddress(signWith);
+    console.log('📍 Address conversion:');
+    console.log('  Original:', signWith);
+    console.log('  Checksummed:', checksummedAddress);
+    
     const requestPayload = {
       type: "ACTIVITY_TYPE_SIGN_RAW_PAYLOADS",
       timestampMs: String(Date.now()),
       organizationId,
       parameters: {
-        signWith,
+        signWith: checksummedAddress,
         payloads,
         encoding: "PAYLOAD_ENCODING_HEXADECIMAL",
         hashFunction: "HASH_FUNCTION_NO_OP"
@@ -88,29 +81,49 @@ class TurnkeyDirectClient {
     const payloadString = JSON.stringify(requestPayload);
     const stamp = await this.createStamp(payloadString);
     
-    console.log('Making request to Turnkey API...');
-    console.log('Endpoint:', `${this.baseUrl}/public/v1/submit/sign_raw_payloads`);
-    console.log('Payload:', JSON.stringify(requestPayload, null, 2));
-    
-    const response = await axios.post(
-      `${this.baseUrl}/public/v1/submit/sign_raw_payloads`,
-      requestPayload,
-      {
-        headers: {
-          'X-Stamp': stamp,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    // Extract signatures from response
-    const signatures = response.data.activity.result.signRawPayloadsResult.signatures;
-    return signatures.map((sig: any) => {
-      const r = sig.r.slice(2); // Remove 0x prefix
-      const s = sig.s.slice(2); // Remove 0x prefix
-      const v = sig.v.toString(16).padStart(2, '0'); // Convert to hex and pad
-      return r + s + v;
+    console.log('🔗 Making request to Turnkey API...');
+    console.log('📍 Endpoint:', `${this.baseUrl}/public/v1/submit/sign_raw_payloads`);
+    console.log('📦 Request Payload:', JSON.stringify(requestPayload, null, 2));
+    console.log('🔐 X-Stamp Header:', stamp);
+    console.log('📋 Headers:', {
+      'X-Stamp': stamp,
+      'Content-Type': 'application/json',
     });
+    
+    try {
+      const response = await axios.post(
+        `${this.baseUrl}/public/v1/submit/sign_raw_payloads`,
+        requestPayload,
+        {
+          headers: {
+            'X-Stamp': stamp,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        }
+      );
+      
+      console.log('✅ Turnkey API Response Status:', response.status);
+      console.log('📄 Turnkey API Response Headers:', response.headers);
+      console.log('📊 Turnkey API Response Data:', JSON.stringify(response.data, null, 2));
+      
+      // Extract signatures from response
+      const signatures = response.data.activity.result.signRawPayloadsResult.signatures;
+      return signatures.map((sig: any) => {
+        const r = sig.r.slice(2); // Remove 0x prefix
+        const s = sig.s.slice(2); // Remove 0x prefix
+        const v = sig.v.toString(16).padStart(2, '0'); // Convert to hex and pad
+        return r + s + v;
+      });
+    } catch (error: any) {
+      console.log('❌ Turnkey API Error Details:');
+      console.log('🔴 Status Code:', error.response?.status);
+      console.log('🔴 Status Text:', error.response?.statusText);
+      console.log('🔴 Response Headers:', error.response?.headers);
+      console.log('🔴 Response Data:', JSON.stringify(error.response?.data, null, 2));
+      console.log('🔴 Error Message:', error.message);
+      throw error;
+    }
   }
 }
 
