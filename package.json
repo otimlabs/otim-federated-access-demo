@@ -1,0 +1,25 @@
+{
+  "name": "otim-federated-access-demo",
+  "version": "1.0.0",
+  "description": "Simple TypeScript script for calling OTIM API",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "@turnkey/sdk-server": "^4.10.4",
+    "viem": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "typescript": "^5.2.2",
+    "ts-node": "^10.9.1"
+  },
+  "keywords": ["otim", "api", "typescript"],
+  "author": "",
+  "license": "MIT"
+}
