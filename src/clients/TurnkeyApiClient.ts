@@ -42,7 +42,7 @@ export class TurnkeyApiClient {
     return stringToBase64urlString(JSON.stringify(stamp));
   }
 
-  async signRawPayloads(organizationId: string, payloads: string[], signWith: string): Promise<string[]> {
+  async signRawPayloads(organizationId: string, payloads: string[], signWith: string): Promise<{ r: string; s: string; v: string }[]> {
     // Convert address to EIP-55 checksummed format (Turnkey requires this)
     const checksummedAddress = getAddress(signWith);
     
@@ -76,10 +76,13 @@ export class TurnkeyApiClient {
     // Extract signatures from response
     const signatures = response.data.activity.result.signRawPayloadsResult.signatures;
     return signatures.map((sig: any) => {
-      const r = sig.r.slice(2); // Remove 0x prefix
-      const s = sig.s.slice(2); // Remove 0x prefix
-      const v = sig.v.toString(16).padStart(2, '0'); // Convert to hex and pad
-      return r + s + v;
+      console.log('Turnkey raw signature:', sig);
+      // Return the raw signature object as-is
+      return {
+        r: sig.r,
+        s: sig.s,
+        v: sig.v
+      };
     });
   }
 }

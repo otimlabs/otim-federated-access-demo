@@ -1,9 +1,46 @@
 import * as dotenv from 'dotenv';
-import { hashAuthorization } from 'viem/utils';
+import { hashAuthorization, toRlp, toHex } from 'viem/utils';
+import { parseSignature, parseCompactSignature } from 'viem';
 import { TurnkeyApiClient, OtimApiClient } from './clients';
 
 // Load environment variables
 dotenv.config();
+
+/**
+ * EIP-2098 Signature format (compact)
+ */
+interface EIP2098Signature {
+  yParity: number;
+  r: `0x${string}`;
+  s: `0x${string}`;
+}
+
+/**
+ * Converts a standard signature to EIP-2098 format
+ */
+const formatSignatureToEIP2098 = (signature: {
+  v: string;
+  r: string;
+  s: string;
+}): EIP2098Signature => {
+  const ensureHexPrefix = (value: string): `0x${string}` =>
+    value.startsWith("0x") ? (value as `0x${string}`) : `0x${value}`;
+
+  // Normalize v to EIP-2098 yParity (0 or 1)
+  const vNum = Number.parseInt(signature.v, 16);
+  const yParity = (() => {
+    if (Number.isNaN(vNum)) return 0;
+    // v in {0,1} already parity; v in {27,28} -> 27->0, 28->1; v>=35 -> v%2
+    if (vNum <= 1) return vNum;
+    return vNum % 2 === 0 ? 1 : 0;
+  })();
+
+  return {
+    yParity,
+    r: ensureHexPrefix(signature.r),
+    s: ensureHexPrefix(signature.s),
+  };
+};
 
 async function main() {
   try {
@@ -27,12 +64,12 @@ async function main() {
           maxExecutions: 1,
           actionArguments: {
             sweepERC20: {
-              token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+              token: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
               target: process.env.OTIM_TARGET!,
               threshold: process.env.OTIM_THRESHOLD!,
               endBalance: "0x0",
               fee: {
-                token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                token: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
                 executionFee: 0,
                 maxBaseFeePerGas: maxBaseFeePerGas,
                 maxPriorityFeePerGas: maxPriorityFeePerGas,
@@ -54,7 +91,7 @@ async function main() {
     const delegateAddress = await otimClient.getDelegateAddress();
     const authHash = hashAuthorization({
       contractAddress: delegateAddress as `0x${string}`,
-      chainId: Number(process.env.OTIM_CHAIN_ID!),
+      chainId: 0,
       nonce: 0,
     });
 
@@ -70,6 +107,66 @@ async function main() {
       response.ephemeralWalletAddress
     );
     console.log(`Successfully signed ${signatures.length} payloads`);
+
+    // Prepare data for /payment/request/new endpoint
+    const firstSignature = signatures[0];
+    console.log('First signature:', firstSignature);
+    
+    // Format the signature to EIP-2098 format
+    const { yParity, r, s } = formatSignatureToEIP2098(firstSignature);
+    console.log('Formatted signature:', { yParity, r, s });
+    
+    // Create RLP-encoded signedAuthorization using formatted signature components
+    const signedAuthorization = toRlp([
+      "0x",
+      delegateAddress as `0x${string}`,
+      "0x", // nonce is always 0 for EIP-7702
+      yParity === 0 ? "0x" : toHex(yParity),
+      r,
+      s,
+    ] as const);
+    const remainingSignatures = signatures.slice(1); // Rest are instruction signatures
+
+    // Add activation signatures to completion instructions
+    const completionInstructionsWithSignatures = response.completionInstructions.map((instruction: any, index: number) => {
+      const sig = remainingSignatures[index];
+      const { yParity, r, s } = formatSignatureToEIP2098(sig);
+      
+      return {
+        ...instruction,
+        activationSignature: {
+          r,
+          s,
+          yParity
+        }
+      };
+    });
+
+    // Add activation signatures to regular instructions (if any)
+    const instructionsWithSignatures = (response.instructions || []).map((instruction: any, index: number) => {
+      const sig = remainingSignatures[response.completionInstructions.length + index];
+      const { yParity, r, s } = formatSignatureToEIP2098(sig);
+      
+      return {
+        ...instruction,
+        activationSignature: {
+          r,
+          s,
+          yParity
+        }
+      };
+    });
+
+    // Create payment request
+    console.log('Creating payment request...');
+    const newPaymentRequest = await otimClient.createPaymentRequest(
+      response.requestId,
+      signedAuthorization,
+      completionInstructionsWithSignatures,
+      instructionsWithSignatures
+    );
+    console.log('Payment request created successfully');
+    console.log('Payment request response:', JSON.stringify(newPaymentRequest, null, 2));
 
     console.log('Demo completed successfully!');
 

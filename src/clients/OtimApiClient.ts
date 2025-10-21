@@ -21,36 +21,64 @@ export class OtimApiClient {
 
   async getOptimalGasFees(): Promise<{ maxBaseFeePerGas: string; maxPriorityFeePerGas: string }> {
     const url = `${this.baseUrl}/instruction/estimate/max_priority_fee_per_gas/${this.chainId}`;
-    const response = await axios.get(url, { headers: this.getHeaders() });
-    
-    const estimates = response.data;
-    const maxPriorityFeePerGas = `0x${estimates.normalMaxPriorityFeeEstimate.toString(16)}`;
-    
-    return {
-      maxBaseFeePerGas: '0x0',
-      maxPriorityFeePerGas,
-    };
+    try {
+      const response = await axios.get(url, { headers: this.getHeaders() });
+      
+      const estimates = response.data;
+      const maxPriorityFeePerGas = `0x${estimates.normalMaxPriorityFeeEstimate.toString(16)}`;
+      
+      return {
+        maxBaseFeePerGas: '0x0',
+        maxPriorityFeePerGas,
+      };
+    } catch (error: any) {
+      console.error(`Error fetching gas fees from ${url}:`, error.response?.data || error.message);
+      throw error;
+    }
   }
 
   async getDelegateAddress(): Promise<string> {
-    const response = await axios.get(
-      `${this.baseUrl}/config/delegate/address/${this.chainId}`,
-      { headers: this.getHeaders() }
-    );
-    console.log('Delegate address response:', response.data);
-    return response.data.otimDelegateAddress;
+    const url = `${this.baseUrl}/config/delegate/address/${this.chainId}`;
+    try {
+      const response = await axios.get(url, { headers: this.getHeaders() });
+      return response.data.otimDelegateAddress;
+    } catch (error: any) {
+      console.error(`Error fetching delegate address from ${url}:`, error.response?.data || error.message);
+      throw error;
+    }
   }
 
   async buildPaymentRequest(payload: any): Promise<any> {
+    const url = `${this.baseUrl}/payment/request/build`;
     try {
-      const response = await axios.post(
-        `${this.baseUrl}/payment/request/build`,
-        payload,
-        { headers: this.getHeaders() }
-      );
+      const response = await axios.post(url, payload, { headers: this.getHeaders() });
       return response.data;
     } catch (error: any) {
-      console.error('Error building payment request:', error.response?.data || error.message);
+      console.error(`Error building payment request at ${url}:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  async createPaymentRequest(
+    requestId: string,
+    signedAuthorization: string,
+    completionInstructions: any[],
+    instructions: any[]
+  ): Promise<any> {
+    const url = `${this.baseUrl}/payment/request/new`;
+    try {
+      const payload = {
+        requestId: requestId,
+        signedAuthorization: signedAuthorization,
+        completionInstructions: completionInstructions,
+        instructions: instructions
+      };
+
+      console.log('Payment request payload:', JSON.stringify(payload, null, 2));
+      const response = await axios.post(url, payload, { headers: this.getHeaders() });
+      return response.data;
+    } catch (error: any) {
+      console.error(`Error creating payment request at ${url}:`, error.response?.data || error.message);
       throw error;
     }
   }
@@ -81,10 +109,7 @@ export class OtimApiClient {
   }
 
   private async hashCompletionInstruction(instruction: any, delegateAddress: string): Promise<string> {
-    console.log('Instruction to hash:', JSON.stringify(instruction, null, 2));
-    
     // Decode the arguments to get the sweepERC20 data
-    // The arguments are ABI-encoded: token, target, threshold, endBalance, feeToken, maxBaseFeePerGas, maxPriorityFeePerGas, executionFee
     const args = instruction.arguments.slice(2); // Remove 0x prefix
     const token = '0x' + args.slice(24, 64); // Skip first 32 bytes (token)
     const target = '0x' + args.slice(64, 104); // Next 32 bytes (target)
@@ -95,17 +120,6 @@ export class OtimApiClient {
     const maxPriorityFeePerGas = BigInt('0x' + args.slice(240, 272)); // Next 32 bytes (maxPriorityFeePerGas)
     const executionFee = BigInt('0x' + args.slice(272, 304)); // Next 32 bytes (executionFee)
     
-    console.log('Decoded arguments:', {
-      token,
-      target,
-      threshold: threshold.toString(),
-      endBalance: endBalance.toString(),
-      feeToken,
-      maxBaseFeePerGas: maxBaseFeePerGas.toString(),
-      maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
-      executionFee: executionFee.toString()
-    });
-    
     const domain = {
       chainId: instruction.chainId,
       name: "OtimDelegate",
@@ -113,19 +127,19 @@ export class OtimApiClient {
       verifyingContract: delegateAddress as `0x${string}`,
       version: "1",
     } as const;
-
+  
     const types = {
       Instruction: [
         { name: "salt", type: "uint256" },
         { name: "maxExecutions", type: "uint256" },
         { name: "action", type: "address" },
-        { name: "sweepERC20", type: "SweepERC20" }
+        { name: "sweepERC20", type: "SweepERC20" }  // Fixed: capital S
       ],
       SweepERC20: [
         { name: "token", type: "address" },
         { name: "target", type: "address" },
         { name: "threshold", type: "uint256" },
-        { name: "endBalance", type: "uint256" },
+        { name: "endBalance", type: "uint256" },  // Added missing field
         { name: "fee", type: "Fee" }
       ],
       Fee: [
@@ -135,7 +149,7 @@ export class OtimApiClient {
         { name: "executionFee", type: "uint256" }
       ]
     } as const;
-
+  
     const message = {
       salt: BigInt(instruction.salt),
       maxExecutions: BigInt(instruction.maxExecutions),
@@ -144,7 +158,7 @@ export class OtimApiClient {
         token: token as `0x${string}`,
         target: target as `0x${string}`,
         threshold,
-        endBalance,
+        endBalance,  // Added missing field
         fee: {
           token: feeToken as `0x${string}`,
           maxBaseFeePerGas,
@@ -153,7 +167,7 @@ export class OtimApiClient {
         }
       }
     };
-
+  
     return hashTypedData({ domain, types, primaryType: "Instruction", message });
   }
 }
