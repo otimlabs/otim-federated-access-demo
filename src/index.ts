@@ -168,6 +168,11 @@ async function main() {
     console.log('Payment request created successfully');
     console.log('Payment request response:', JSON.stringify(newPaymentRequest, null, 2));
 
+    console.log('\n=== PAYMENT INSTRUCTIONS ===');
+    console.log(`Send USDC on chain ID ${process.env.OTIM_CHAIN_ID} to address: ${response.ephemeralWalletAddress}`);
+    console.log(`Amount: ${process.env.OTIM_THRESHOLD} (${parseInt(process.env.OTIM_THRESHOLD!, 16)} wei)`);
+    console.log('============================\n');
+
     console.log('Demo completed successfully!');
 
   } catch (error) {

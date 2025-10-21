@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { hashTypedData, keccak256, toHex, hashAuthorization } from 'viem/utils';
+import { decodeAbiParameters } from 'viem';
 
 export class OtimApiClient {
   private baseUrl: string;
@@ -109,16 +110,20 @@ export class OtimApiClient {
   }
 
   private async hashCompletionInstruction(instruction: any, delegateAddress: string): Promise<string> {
-    // Decode the arguments to get the sweepERC20 data
-    const args = instruction.arguments.slice(2); // Remove 0x prefix
-    const token = '0x' + args.slice(24, 64); // Skip first 32 bytes (token)
-    const target = '0x' + args.slice(64, 104); // Next 32 bytes (target)
-    const threshold = BigInt('0x' + args.slice(104, 136)); // Next 32 bytes (threshold)
-    const endBalance = BigInt('0x' + args.slice(136, 168)); // Next 32 bytes (endBalance)
-    const feeToken = '0x' + args.slice(168, 208); // Next 32 bytes (feeToken)
-    const maxBaseFeePerGas = BigInt('0x' + args.slice(208, 240)); // Next 32 bytes (maxBaseFeePerGas)
-    const maxPriorityFeePerGas = BigInt('0x' + args.slice(240, 272)); // Next 32 bytes (maxPriorityFeePerGas)
-    const executionFee = BigInt('0x' + args.slice(272, 304)); // Next 32 bytes (executionFee)
+    // Decode the ABI-encoded arguments using viem's decodeAbiParameters
+    const abiParameters = [
+      { name: 'token', type: 'address' },
+      { name: 'target', type: 'address' },
+      { name: 'threshold', type: 'uint256' },
+      { name: 'endBalance', type: 'uint256' },
+      { name: 'feeToken', type: 'address' },
+      { name: 'maxBaseFeePerGas', type: 'uint256' },
+      { name: 'maxPriorityFeePerGas', type: 'uint256' },
+      { name: 'executionFee', type: 'uint256' }
+    ];
+    
+    const [token, target, threshold, endBalance, feeToken, maxBaseFeePerGas, maxPriorityFeePerGas, executionFee] = 
+      decodeAbiParameters(abiParameters, instruction.arguments as `0x${string}`);
     
     const domain = {
       chainId: instruction.chainId,
@@ -157,16 +162,22 @@ export class OtimApiClient {
       sweepERC20: {
         token: token as `0x${string}`,
         target: target as `0x${string}`,
-        threshold,
-        endBalance,  // Added missing field
+        threshold: threshold as bigint,
+        endBalance: endBalance as bigint,
         fee: {
           token: feeToken as `0x${string}`,
-          maxBaseFeePerGas,
-          maxPriorityFeePerGas,
-          executionFee
+          maxBaseFeePerGas: maxBaseFeePerGas as bigint,
+          maxPriorityFeePerGas: maxPriorityFeePerGas as bigint,
+          executionFee: executionFee as bigint
         }
       }
     };
+
+    console.log('Message:', message);
+    console.log('Domain:', JSON.stringify(domain, null, 2));
+    console.log('Types:', JSON.stringify(types, null, 2));
+    console.log('Primary type:', "Instruction");
+    console.log('Hash:', hashTypedData({ domain, types, primaryType: "Instruction", message }));
   
     return hashTypedData({ domain, types, primaryType: "Instruction", message });
   }
