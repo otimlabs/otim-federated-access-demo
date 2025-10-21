@@ -333,6 +333,7 @@ class OtimApiClient {
       throw error;
     }
   }
+
 }
 
 async function main() {
@@ -341,11 +342,6 @@ async function main() {
     const client = new OtimApiClient();
     
     // Initialize Turnkey client
-    console.log('Turnkey Environment Variables:');
-    console.log('TURNKEY_ORG_ID:', process.env.TURNKEY_ORG_ID);
-    console.log('OTIM_DEV_PUBLIC_KEY:', process.env.OTIM_DEV_PUBLIC_KEY ? `${process.env.OTIM_DEV_PUBLIC_KEY.slice(0, 10)}...${process.env.OTIM_DEV_PUBLIC_KEY.slice(-10)}` : 'NOT SET');
-    console.log('OTIM_DEV_PRIVATE_KEY:', process.env.OTIM_DEV_PRIVATE_KEY ? `${process.env.OTIM_DEV_PRIVATE_KEY.slice(0, 10)}...${process.env.OTIM_DEV_PRIVATE_KEY.slice(-10)}` : 'NOT SET');
-    
     const turnkey = new Turnkey({
       defaultOrganizationId: process.env.TURNKEY_ORG_ID!,
       apiBaseUrl: "https://api.turnkey.com",
@@ -416,9 +412,6 @@ async function main() {
 
     // Sign the raw payloads with Turnkey
     console.log('Signing raw payloads with Turnkey...');
-    console.log('Using response.subOrgId:', response.subOrgId);
-    console.log('Using TURNKEY_ORG_ID:', process.env.TURNKEY_ORG_ID);
-    console.log('Using ephemeral wallet address:', response.ephemeralWalletAddress);
     
     const signatureResponse = await apiClient.signRawPayloads({
       payloads: signingHashes,
