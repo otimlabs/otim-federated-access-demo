@@ -110,8 +110,10 @@ export class OtimApiClient {
   }
 
   private async hashCompletionInstruction(instruction: any, delegateAddress: string): Promise<string> {
-    // Determine instruction type based on the presence of specific action arguments
-    const isSweepCCTP = instruction.actionArguments?.sweepCCTP !== undefined;
+    // Determine instruction type based on the number of ABI parameters
+    // sweepERC20 has 8 parameters, sweepCCTP has 9 parameters
+    const args = instruction.arguments.slice(2); // Remove 0x prefix
+    const isSweepCCTP = args.length > 512; // CCTP has more data due to bytes32 destinationMintRecipient
     
     let decodedArgs: any[];
     let message: any;

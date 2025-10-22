@@ -63,9 +63,22 @@ async function main() {
           salt: randomSalt,
           maxExecutions: 1,
           actionArguments: {
-            sweepERC20: {
+            // sweepERC20: {
+            //   token: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            //   target: process.env.OTIM_TARGET!,
+            //   threshold: process.env.OTIM_THRESHOLD!,
+            //   endBalance: "0x0",
+            //   fee: {
+            //     token: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            //     executionFee: 0,
+            //     maxBaseFeePerGas: maxBaseFeePerGas,
+            //     maxPriorityFeePerGas: maxPriorityFeePerGas,
+            //   },
+            // },
+            sweepCCTP: {
               token: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-              target: process.env.OTIM_TARGET!,
+              destinationDomain: Number(process.env.CCTP_DESTINATION_DOMAIN!),
+              destinationMintRecipient: `0x${process.env.OTIM_TARGET!.slice(2).padStart(64, '0')}`,
               threshold: process.env.OTIM_THRESHOLD!,
               endBalance: "0x0",
               fee: {
