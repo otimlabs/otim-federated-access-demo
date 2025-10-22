@@ -110,20 +110,48 @@ export class OtimApiClient {
   }
 
   private async hashCompletionInstruction(instruction: any, delegateAddress: string): Promise<string> {
-    // Decode the ABI-encoded arguments using viem's decodeAbiParameters
-    const abiParameters = [
-      { name: 'token', type: 'address' },
-      { name: 'target', type: 'address' },
-      { name: 'threshold', type: 'uint256' },
-      { name: 'endBalance', type: 'uint256' },
-      { name: 'feeToken', type: 'address' },
-      { name: 'maxBaseFeePerGas', type: 'uint256' },
-      { name: 'maxPriorityFeePerGas', type: 'uint256' },
-      { name: 'executionFee', type: 'uint256' }
-    ];
+    // Determine instruction type based on the presence of specific action arguments
+    const isSweepCCTP = instruction.actionArguments?.sweepCCTP !== undefined;
     
-    const [token, target, threshold, endBalance, feeToken, maxBaseFeePerGas, maxPriorityFeePerGas, executionFee] = 
-      decodeAbiParameters(abiParameters, instruction.arguments as `0x${string}`);
+    let decodedArgs: any[];
+    let message: any;
+    
+    if (isSweepCCTP) {
+      // Decode sweepCCTP arguments
+      const abiParameters = [
+        { name: 'token', type: 'address' },
+        { name: 'destinationDomain', type: 'uint32' },
+        { name: 'destinationMintRecipient', type: 'bytes32' },
+        { name: 'threshold', type: 'uint256' },
+        { name: 'endBalance', type: 'uint256' },
+        { name: 'feeToken', type: 'address' },
+        { name: 'maxBaseFeePerGas', type: 'uint256' },
+        { name: 'maxPriorityFeePerGas', type: 'uint256' },
+        { name: 'executionFee', type: 'uint256' }
+      ];
+      
+      const [token, destinationDomain, destinationMintRecipient, threshold, endBalance, feeToken, maxBaseFeePerGas, maxPriorityFeePerGas, executionFee] = 
+        decodeAbiParameters(abiParameters, instruction.arguments as `0x${string}`);
+      
+      decodedArgs = [token, destinationDomain, destinationMintRecipient, threshold, endBalance, feeToken, maxBaseFeePerGas, maxPriorityFeePerGas, executionFee];
+    } else {
+      // Decode sweepERC20 arguments
+      const abiParameters = [
+        { name: 'token', type: 'address' },
+        { name: 'target', type: 'address' },
+        { name: 'threshold', type: 'uint256' },
+        { name: 'endBalance', type: 'uint256' },
+        { name: 'feeToken', type: 'address' },
+        { name: 'maxBaseFeePerGas', type: 'uint256' },
+        { name: 'maxPriorityFeePerGas', type: 'uint256' },
+        { name: 'executionFee', type: 'uint256' }
+      ];
+      
+      const [token, target, threshold, endBalance, feeToken, maxBaseFeePerGas, maxPriorityFeePerGas, executionFee] = 
+        decodeAbiParameters(abiParameters, instruction.arguments as `0x${string}`);
+      
+      decodedArgs = [token, target, threshold, endBalance, feeToken, maxBaseFeePerGas, maxPriorityFeePerGas, executionFee];
+    }
     
     const domain = {
       chainId: instruction.chainId,
@@ -138,13 +166,21 @@ export class OtimApiClient {
         { name: "salt", type: "uint256" },
         { name: "maxExecutions", type: "uint256" },
         { name: "action", type: "address" },
-        { name: "sweepERC20", type: "SweepERC20" }  // Fixed: capital S
+        ...(isSweepCCTP ? [{ name: "sweepCCTP", type: "SweepCCTP" }] : [{ name: "sweepERC20", type: "SweepERC20" }])
       ],
       SweepERC20: [
         { name: "token", type: "address" },
         { name: "target", type: "address" },
         { name: "threshold", type: "uint256" },
-        { name: "endBalance", type: "uint256" },  // Added missing field
+        { name: "endBalance", type: "uint256" },
+        { name: "fee", type: "Fee" }
+      ],
+      SweepCCTP: [
+        { name: "token", type: "address" },
+        { name: "destinationDomain", type: "uint32" },
+        { name: "destinationMintRecipient", type: "bytes32" },
+        { name: "threshold", type: "uint256" },
+        { name: "endBalance", type: "uint256" },
         { name: "fee", type: "Fee" }
       ],
       Fee: [
@@ -155,23 +191,49 @@ export class OtimApiClient {
       ]
     } as const;
   
-    const message = {
-      salt: BigInt(instruction.salt),
-      maxExecutions: BigInt(instruction.maxExecutions),
-      action: instruction.action as `0x${string}`,
-      sweepERC20: {
-        token: token as `0x${string}`,
-        target: target as `0x${string}`,
-        threshold: threshold as bigint,
-        endBalance: endBalance as bigint,
-        fee: {
-          token: feeToken as `0x${string}`,
-          maxBaseFeePerGas: maxBaseFeePerGas as bigint,
-          maxPriorityFeePerGas: maxPriorityFeePerGas as bigint,
-          executionFee: executionFee as bigint
+    // Construct message based on instruction type
+    if (isSweepCCTP) {
+      const [token, destinationDomain, destinationMintRecipient, threshold, endBalance, feeToken, maxBaseFeePerGas, maxPriorityFeePerGas, executionFee] = decodedArgs;
+      
+      message = {
+        salt: BigInt(instruction.salt),
+        maxExecutions: BigInt(instruction.maxExecutions),
+        action: instruction.action as `0x${string}`,
+        sweepCCTP: {
+          token: token as `0x${string}`,
+          destinationDomain: destinationDomain as number,
+          destinationMintRecipient: destinationMintRecipient as `0x${string}`,
+          threshold: threshold as bigint,
+          endBalance: endBalance as bigint,
+          fee: {
+            token: feeToken as `0x${string}`,
+            maxBaseFeePerGas: maxBaseFeePerGas as bigint,
+            maxPriorityFeePerGas: maxPriorityFeePerGas as bigint,
+            executionFee: executionFee as bigint
+          }
         }
-      }
-    };
+      };
+    } else {
+      const [token, target, threshold, endBalance, feeToken, maxBaseFeePerGas, maxPriorityFeePerGas, executionFee] = decodedArgs;
+      
+      message = {
+        salt: BigInt(instruction.salt),
+        maxExecutions: BigInt(instruction.maxExecutions),
+        action: instruction.action as `0x${string}`,
+        sweepERC20: {
+          token: token as `0x${string}`,
+          target: target as `0x${string}`,
+          threshold: threshold as bigint,
+          endBalance: endBalance as bigint,
+          fee: {
+            token: feeToken as `0x${string}`,
+            maxBaseFeePerGas: maxBaseFeePerGas as bigint,
+            maxPriorityFeePerGas: maxPriorityFeePerGas as bigint,
+            executionFee: executionFee as bigint
+          }
+        }
+      };
+    }
 
     console.log('Message:', message);
     console.log('Domain:', JSON.stringify(domain, null, 2));

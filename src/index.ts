@@ -55,7 +55,7 @@ async function main() {
     // Fetch optimal gas fees
     const { maxBaseFeePerGas, maxPriorityFeePerGas } = await otimClient.getOptimalGasFees();
 
-    // Build payment request
+    // Build payment request - user can specify any action they want
     const paymentRequestPayload = {
       completionInstructions: [
         {
@@ -170,7 +170,9 @@ async function main() {
 
     console.log('\n=== PAYMENT INSTRUCTIONS ===');
     console.log(`Send USDC on chain ID ${process.env.OTIM_CHAIN_ID} to address: ${response.ephemeralWalletAddress}`);
-    console.log(`Amount: ${process.env.OTIM_THRESHOLD} (${parseInt(process.env.OTIM_THRESHOLD!, 16)} wei)`);
+    const thresholdWei = parseInt(process.env.OTIM_THRESHOLD!, 16);
+    const usdcAmount = thresholdWei / (10 ** 6); // USDC has 6 decimals
+    console.log(`Amount: ${usdcAmount} USDC`);
     console.log('============================\n');
 
     console.log('Demo completed successfully!');
